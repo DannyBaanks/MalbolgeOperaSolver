@@ -55,12 +55,14 @@ opera/
 | `Autobolge` | 3^10 | Contenedor BOLG1/BOLG2 (Zig) |
 | `Walbolge` | 3^10 | Decompilador inverso del Translator |
 
-## Atribución
+### Atribución
 
-Este proyecto es trabajo original de **Danny Banks**. Los backends referenciados
-(bolge19, fast20, Walbolge, Autobolge, malbolge-oracle) pertenecen al workspace
-ISyCo y a sus autores respectivos. MalbolgeLISP y fast20 son obra CC0 de su
-autor upstream.
+Este proyecto es trabajo original de **Danny Banks** dentro de
+**ISyCo (Interactive System for Coevolution)**.
+
+Los backends referenciados (bolge19, fast20, Walbolge, Autobolge,
+malbolge-oracle) pertenecen al workspace ISyCo y a sus autores respectivos.
+MalbolgeLISP y fast20 son obra CC0 de su autor upstream.
 
 ## Licencia
 
