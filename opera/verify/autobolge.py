@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import struct
 import subprocess
 import os
+import tempfile
 import hashlib
 
 
@@ -102,7 +103,12 @@ class AutobolgeVerifier:
     """
 
     def __init__(self, autobolge_exe: str = None):
-        self.exe = autobolge_exe or r"C:\Development\ISyCo Git\Autobolge\zig\bolge.exe"
+        self.exe = autobolge_exe or os.environ.get("OPERA_AUTOBOLGE_EXE")
+        if not self.exe:
+            raise RuntimeError(
+                "Autobolge executable not configured: pass autobolge_exe or set "
+                "the OPERA_AUTOBOLGE_EXE environment variable to the Autobolge "
+                "zig/bolge.exe path")
 
     def make_bolg1(self, program_text: str, input_text: str = "",
                    max_steps: int = 5_000_000) -> bytes:
@@ -129,8 +135,9 @@ class AutobolgeVerifier:
         Returns parsed result with output, steps, halted status.
         """
         # Create input BOLG1
-        ib = os.path.join(os.environ.get("TEMP", "."), "autobolge_in.bin")
-        ob = os.path.join(os.environ.get("TEMP", "."), "autobolge_out.bin")
+        tmp = tempfile.gettempdir()
+        ib = os.path.join(tmp, "autobolge_in.bin")
+        ob = os.path.join(tmp, "autobolge_out.bin")
 
         cells = [ord(c) for c in program_text.strip()]
         blob = b"BOLG1" + struct.pack("<Q", 1)
@@ -144,13 +151,13 @@ class AutobolgeVerifier:
             f.write(blob)
 
         # Run bolge.exe
-        exe = r"C:\Development\ISyCo Git\Autobolge\zig\bolge.exe"
-        if not os.path.exists(exe):
-            return {"success": False, "error": "bolge.exe not found"}
+        exe = self.exe
+        if not exe or not os.path.exists(exe):
+            return {"success": False, "error": "bolge.exe not found (set "
+                    "OPERA_AUTOBOLGE_EXE)"}
 
-        ob_path = os.path.join(os.environ.get("TEMP", "."), "autobolge_out.bin")
         proc = subprocess.run(
-            [exe, "C:\\Users\\progr\\AppData\\Local\\Temp\\autobolge_in.bin", ob_path],
+            [exe, ib, ob],
             capture_output=True,
             timeout=180,
         )
@@ -159,7 +166,7 @@ class AutobolgeVerifier:
         if not os.path.exists(ob):
             return {"success": False, "error": "No output file"}
 
-        with open("C:\\Users\\progr\\AppData\\Local\\Temp\\autobolge_out.bin", "rb") as f:
+        with open(ob, "rb") as f:
             data = f.read()
 
         if len(data) < 13 or data[:5] != b"BOLG2":

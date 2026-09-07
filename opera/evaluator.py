@@ -46,7 +46,7 @@ class BackendRegistry:
     """Registry of available backends and their capabilities."""
 
     def __init__(self, repo_root: Path = None):
-        # Find the ISyCo root (contains experiments0000, ISyCo Git, etc.)
+        # Find the ISyCo workspace root (contains experiments0000 etc.)
         if repo_root is None:
             repo_root = Path(__file__).parent.parent.parent
         self.repo_root = Path(repo_root)
@@ -55,7 +55,7 @@ class BackendRegistry:
 
     def _discover_backends(self):
         """Auto-discover available backends."""
-        # The ISyCo root contains experiments0000, ISyCo Git, workspace, etc.
+        # The workspace root contains experiments0000 etc.
         isyco_root = self.repo_root
         
         # bolge19 (native Zig) - at ISyCo/experiments0000/MalbolgeLisp Vs Isyco/runtime/
@@ -88,31 +88,37 @@ class BackendRegistry:
             }
 
         # malbolge-toolkit
-        toolkit = Path(r"C:\Development\ISyCo Git\workspace\malbolge_toolkit")
-        if (toolkit / "malbolge" / "cli.py").exists():
-            self.backends["toolkit"] = {
-                "type": "python",
-                "module": "malbolge.cli",
-                "cwd": toolkit,
-            }
+        toolkit_env = os.environ.get("OPERA_MALBOLGE_TOOLKIT")
+        if toolkit_env:
+            toolkit = Path(toolkit_env)
+            if (toolkit / "malbolge" / "cli.py").exists():
+                self.backends["toolkit"] = {
+                    "type": "python",
+                    "module": "malbolge.cli",
+                    "cwd": toolkit,
+                }
 
         # Autobolge
-        autobolge_exe = Path(r"C:\Development\ISyCo Git\Autobolge\zig\bolge.exe")
-        if autobolge_exe.exists():
-            self.backends["autobolge"] = {
-                "type": "native",
-                "exe": autobolge_exe,
-                "container": True,
-            }
+        autobolge_env = os.environ.get("OPERA_AUTOBOLGE_EXE")
+        if autobolge_env:
+            autobolge_exe = Path(autobolge_env)
+            if autobolge_exe.exists():
+                self.backends["autobolge"] = {
+                    "type": "native",
+                    "exe": autobolge_exe,
+                    "container": True,
+                }
 
         # Walbolge
-        walbolge_dir = Path(r"C:\Development\ISyCo Git\Walbolge")
-        if (walbolge_dir / "walbolge" / "cli.py").exists():
-            self.backends["walbolge"] = {
-                "type": "python",
-                "module": "walbolge.cli",
-                "cwd": walbolge_dir,
-            }
+        walbolge_env = os.environ.get("OPERA_WALBOLGE_DIR")
+        if walbolge_env:
+            walbolge_dir = Path(walbolge_env)
+            if (walbolge_dir / "walbolge" / "cli.py").exists():
+                self.backends["walbolge"] = {
+                    "type": "python",
+                    "module": "walbolge.cli",
+                    "cwd": walbolge_dir,
+                }
 
     def list_backends(self) -> dict:
         return {k: {k2: v2 for k2, v2 in v.items() if k2 != "exe"} for k, v in self.backends.items()}
@@ -123,8 +129,14 @@ class UnifiedEvaluator:
 
     def __init__(self, repo_root: Optional[Path] = None):
         if repo_root is None:
-            # The ISyCo root is at C:\Development\ISyCo (contains experiments0000, ISyCo Git, etc.)
-            repo_root = Path(r"C:\Development\ISyCo")
+            # The ISyCo workspace root (contains experiments0000 etc.)
+            env_root = os.environ.get("OPERA_ISYCO_ROOT")
+            if not env_root:
+                raise RuntimeError(
+                    "repo_root not given and OPERA_ISYCO_ROOT is not set: point "
+                    "it at the ISyCo workspace root (the directory containing "
+                    "experiments0000)")
+            repo_root = Path(env_root)
         self.repo_root = Path(repo_root)
         self.registry = BackendRegistry(self.repo_root)
 

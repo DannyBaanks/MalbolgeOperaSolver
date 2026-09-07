@@ -6,7 +6,7 @@ import sys
 import time
 import os
 
-sys.path.insert(0, r"C:\Development\ISyCo Git\malbolge-lisp-forensics\danny-opera-solver")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pathlib import Path
 from opera.evaluator import UnifiedEvaluator

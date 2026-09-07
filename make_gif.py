@@ -110,7 +110,7 @@ class TerminalGif:
 # Pipeline runner + recorder
 # ---------------------------------------------------------------------------
 
-PIPELINE = r"C:\Development\ISyCo Git\malbolge-opera-solver\test_pipeline_final.py"
+PIPELINE = str(Path(__file__).resolve().parent / "test_pipeline_final.py")
 
 
 def record(pipeline_script: str = PIPELINE, out_gif: Path = None):
@@ -147,7 +147,7 @@ def record(pipeline_script: str = PIPELINE, out_gif: Path = None):
 
 if __name__ == "__main__":
     target = Path(__file__).parent / "malbolge_opera_solver.gif" if "__file__" in dir() \
-             else Path(r"C:\Development\ISyCo Git\danny-opera-solver\malbolge_opera_solver.gif")
+             else Path("malbolge_opera_solver.gif")
 
     script = sys.argv[1] if len(sys.argv) > 1 else PIPELINE
     print(f"Recording pipeline: {script}")

@@ -9,10 +9,21 @@ import random
 import math
 import os
 
-sys.path.insert(0, r"C:\Development\ISyCo Git\malbolge-lisp-forensics\danny-opera-solver")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pathlib import Path
 from opera.evaluator import UnifiedEvaluator
+
+
+def _hello_specimen():
+    """hello.malbolge lives in the malbolge-lisp-forensics repo; locate it via
+    the OPERA_FORENSICS_DIR environment variable (no host default)."""
+    root = os.environ.get("OPERA_FORENSICS_DIR")
+    if not root:
+        raise RuntimeError(
+            "Set OPERA_FORENSICS_DIR to the malbolge-lisp-forensics repository "
+            "directory (it contains specimens/hello.malbolge)")
+    return Path(root) / "specimens" / "hello.malbolge"
 
 
 def random_program(length=64):
@@ -58,7 +69,7 @@ def run_sa():
     print("="*50)
 
     # Quick verify
-    r = UnifiedEvaluator().evaluate_all(Path(r"C:\Development\ISyCo Git\malbolge-lisp-forensics\specimens\hello.malbolge"))
+    r = UnifiedEvaluator().evaluate_all(_hello_specimen())
     for n, v in r.items():
         print(f"  {n}: ok={v.success}, steps={v.steps}, out={v.stdout[:30] if v.stdout else ''}")
 
@@ -155,7 +166,7 @@ if __name__ == "__main__":
     import math
     import os
 
-    sys.path.insert(0, r"C:\Development\ISyCo Git\malbolge-lisp-forensics\danny-opera-solver")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
     import time
     import tempfile
@@ -174,7 +185,7 @@ if __name__ == "__main__":
     print("Backends:", list(UnifiedEvaluator().registry.backends.keys()))
 
     # Verify
-    r = UnifiedEvaluator().evaluate_all(Path(r"C:\Development\ISyCo Git\malbolge-lisp-forensics\specimens\hello.malbolge"))
+    r = UnifiedEvaluator().evaluate_all(_hello_specimen())
     for n, v in r.items():
         print(f"  {n}: ok={v.success}, steps={v.steps}, out={v.stdout[:30] if v.stdout else ''}")
 

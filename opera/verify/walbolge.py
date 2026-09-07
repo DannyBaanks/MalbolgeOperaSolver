@@ -63,7 +63,12 @@ class WalbolgeVerifier:
     """
 
     def __init__(self, walbolge_cwd: str = None, walbolge_exe: str = None):
-        self.cwd = walbolge_cwd or r"C:\Development\ISyCo Git\Walbolge"
+        self.cwd = walbolge_cwd or os.environ.get("OPERA_WALBOLGE_DIR")
+        if not self.cwd:
+            raise RuntimeError(
+                "Walbolge directory not configured: pass walbolge_cwd or set "
+                "the OPERA_WALBOLGE_DIR environment variable to the Walbolge "
+                "repository directory")
         self.exe = walbolge_exe  # Not used directly; uses py -m walbolge.cli
 
     def _run_walbolge(self, mal_file: str, manifest: str = None,

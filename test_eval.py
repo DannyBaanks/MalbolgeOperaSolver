@@ -2,7 +2,8 @@
 """Test the evaluator with real backends."""
 
 import sys
-sys.path.insert(0, r"C:\Development\ISyCo Git\malbolge-lisp-forensics\danny-opera-solver")
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pathlib import Path
 from opera.evaluator import UnifiedEvaluator
@@ -10,9 +11,14 @@ from opera.evaluator import UnifiedEvaluator
 def main():
     evaluator = UnifiedEvaluator()
     print("Backends:", evaluator.registry.list_backends())
-    
-    # Test with hello.malbolge
-    specimen = Path(r"C:\Development\ISyCo Git\malbolge-lisp-forensics\specimens\hello.malbolge")
+
+    # Test with hello.malbolge (from the malbolge-lisp-forensics repo)
+    forensics = os.environ.get("OPERA_FORENSICS_DIR")
+    if not forensics:
+        print("Set OPERA_FORENSICS_DIR to the malbolge-lisp-forensics repo "
+              "to run this demo")
+        return
+    specimen = Path(forensics) / "specimens" / "hello.malbolge"
     if specimen.exists():
         print(f"\nTesting with {specimen}")
         results = evaluator.evaluate_all(specimen)

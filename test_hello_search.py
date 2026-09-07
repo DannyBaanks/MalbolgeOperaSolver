@@ -3,16 +3,22 @@
 """Quick Hello World benchmark - ASCII only."""
 
 import sys
+import os
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Development\ISyCo Git\malbolge-lisp-forensics\danny-opera-solver")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from opera.evaluator import UnifiedEvaluator
 
 
 def main():
     evaluator = UnifiedEvaluator()
-    specimen = Path(r"C:\Development\ISyCo Git\malbolge-lisp-forensics\specimens\hello.malbolge")
+    forensics = os.environ.get("OPERA_FORENSICS_DIR")
+    if not forensics:
+        print("Set OPERA_FORENSICS_DIR to the malbolge-lisp-forensics repo "
+              "to run this demo")
+        return 1
+    specimen = Path(forensics) / "specimens" / "hello.malbolge"
     
     if not specimen.exists():
         print(f"Specimen not found: {specimen}")
