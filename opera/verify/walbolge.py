@@ -27,6 +27,7 @@ class WalbolgeResult:
     raw_output: str = ""
     stderr: str = ""
     returncode: int = -1
+    metadata: Dict = None
 
     def __post_init__(self):
         if self.metadata is None:
@@ -65,18 +66,26 @@ class WalbolgeVerifier:
     def __init__(self, walbolge_cwd: str = None, walbolge_exe: str = None):
         self.cwd = walbolge_cwd or os.environ.get("OPERA_WALBOLGE_DIR")
         if not self.cwd:
+            for cand in [
+                Path("/home/danny/Development/ISyCo Git/Walbolge"),
+                Path("/home/danny/Development/ISyCo Git/walbolge"),
+            ]:
+                if cand.exists() and (cand / "walbolge" / "cli.py").exists():
+                    self.cwd = str(cand)
+                    break
+        if not self.cwd:
             raise RuntimeError(
                 "Walbolge directory not configured: pass walbolge_cwd or set "
                 "the OPERA_WALBOLGE_DIR environment variable to the Walbolge "
                 "repository directory")
-        self.exe = walbolge_exe  # Not used directly; uses py -m walbolge.cli
+        self.exe = walbolge_exe  # Not used directly; uses sys.executable -m walbolge.cli
 
     def _run_walbolge(self, mal_file: str, manifest: str = None,
                       words_dir: str = None, max_steps: int = 500000,
                       classic: bool = False, json_output: str = None) -> Dict:
         """Run walbolge CLI and parse output."""
         cmd = [
-            "py", "-m", "walbolge.cli",
+            sys.executable, "-m", "walbolge.cli",
             mal_file,
         ]
         if manifest:

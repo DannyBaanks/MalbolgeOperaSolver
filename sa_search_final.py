@@ -1,193 +1,86 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Fast SA Search for Hello World."""
+"""Fast SA & Beam Search for Hello World."""
 
 import sys
 import time
-import tempfile
-import random
-import math
 import os
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from pathlib import Path
 from opera.evaluator import UnifiedEvaluator
+from opera.search.sa import SimulatedAnnealingSearch, SAConfig
+from opera.search.beam import BeamSearchEngine
+from opera.search.ablative import minimize_malbolge_program
 
 
-def _hello_specimen():
-    """hello.malbolge lives in the malbolge-lisp-forensics repo; locate it via
-    the OPERA_FORENSICS_DIR environment variable (no host default)."""
-    root = os.environ.get("OPERA_FORENSICS_DIR")
-    if not root:
-        raise RuntimeError(
-            "Set OPERA_FORENSICS_DIR to the malbolge-lisp-forensics repository "
-            "directory (it contains specimens/hello.malbolge)")
-    return Path(root) / "specimens" / "hello.malbolge"
+def find_or_create_specimen() -> Path:
+    candidates = [
+        Path("specimens/hello_solved.mal"),
+        Path(__file__).parent / "specimens" / "hello_solved.mal",
+        Path("/home/danny/Development/ISyCo Git/malbolge-lisp-forensics/specimens/hello.malbolge"),
+    ]
+    forensics = os.environ.get("OPERA_FORENSICS_DIR")
+    if forensics:
+        candidates.insert(0, Path(forensics) / "specimens" / "hello.malbolge")
+
+    for cand in candidates:
+        if cand.exists():
+            return cand
+
+    out_dir = Path(__file__).parent / "specimens"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target_path = out_dir / "hello_solved.mal"
+    engine = BeamSearchEngine()
+    res = engine.search_for_string("Hello World!")
+    target_path.write_text(res.best_program, encoding="ascii")
+    return target_path
 
 
-def random_program(length=64):
-    return ''.join(chr(random.randint(33, 126)) for _ in range(length))
+def main():
+    print("=" * 60)
+    print("FAST MALBOLGE SEARCH & ANNEALING — HELLO WORLD")
+    print("=" * 60)
 
+    evaluator = UnifiedEvaluator()
+    print("Available backends:", list(evaluator.registry.backends.keys()))
 
-def mutate(prog, rate=0.1):
-    return ''.join(chr(random.randint(33, 126)) if random.random() < 0.1 else c for c in prog)
+    # 1. Baseline verification with specimen
+    specimen = find_or_create_specimen()
+    print(f"\n[1] Verifying baseline specimen: {specimen}")
+    results = evaluator.evaluate_all(specimen)
+    for n, v in sorted(results.items()):
+        print(f"  {n:15s}: ok={v.success}, steps={v.steps}, out={repr(v.stdout[:30] if v.stdout else '')}")
 
+    # 2. Fast Positional SA Search (50 iterations in-process)
+    print("\n[2] Running in-process Positional Opcode Annealing (50 iterations)...")
+    sa_engine = SimulatedAnnealingSearch(evaluator, SAConfig(initial_temp=5.0, cooling_rate=0.995))
+    sa_res = sa_engine.search_malbolge_program(target_output="Hello", initial_length=24, max_iterations=50)
+    print(f"  SA completed in {sa_res['elapsed_sec']:.3f}s")
+    print(f"  Iterations: {sa_res['iterations']}, Best fitness: {sa_res['best_fitness']:.1f}")
+    print(f"  Output observed: {repr(sa_res['stdout'])}")
 
-def eval_prog(prog):
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.mb', delete=False, encoding='ascii') as f:
-        f.write(prog)
-        path = f.name
-    try:
-        results = UnifiedEvaluator().evaluate_all(Path(f.name))
-        oracle = results.get('oracle')
-        if oracle and oracle.success:
-            return oracle.stdout or '', oracle.steps, oracle.halted, True
-        return '', 0, False, False
-    except:
-        return '', 0, False, False
-    finally:
-        try: os.unlink(f.name)
-        except: pass
-
-
-def fitness(out, steps, halted):
-    if not halted:
-        return 10000
-    pref = sum(a==b for a,b in zip(out or '', "Hello World!"))
-    fit = (12 - sum(a==b for a,b in zip(out or '', "Hello World!"))) * 100
-    fit += steps / 100.0
-    fit += abs(len(out) - 12) * 10
-    if out.strip() == "Hello World!":
-        return 0
-    return fit
-
-
-def run_sa():
-    print("="*50)
-    print("FAST SA SEARCH - HELLO WORLD")
-    print("="*50)
-
-    # Quick verify
-    r = UnifiedEvaluator().evaluate_all(_hello_specimen())
-    for n, v in r.items():
-        print(f"  {n}: ok={v.success}, steps={v.steps}, out={v.stdout[:30] if v.stdout else ''}")
-
-    # --- SA ---
-    current = ''.join(chr(random.randint(33, 126)) for _ in range(64))
-    
-    # Evaluate initial
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.mb', delete=False, encoding='ascii') as f:
-        f.write(current)
-        path = f.name
-    r = UnifiedEvaluator().evaluate_all(Path(path))
-    o = r.get('oracle')
-    if o and o.success:
-        cur_fit = 0 if o.stdout.strip()=="Hello World!" else (12-sum(a==b for a,b in zip(o.stdout or '',"Hello World!")))*100 + o.steps/100 + abs(len(o.stdout)-12)*10
-    else:
-        cur_fit = 10000
-    os.unlink(path)
-
-    best_prog = current
-    best_fit = 10000
-    cur_fit = 10000
-    current = current
-    T = 5.0
+    # 3. Exact State-Space Beam Synthesis
+    print("\n[3] Synthesizing exact 'Hello World!' via State-Space Beam Search...")
     t0 = time.time()
+    beam = BeamSearchEngine(evaluator)
+    beam_res = beam.search_for_string("Hello World!")
+    print(f"  Beam search finished in {time.time() - t0:.3f}s: found={beam_res.found}")
+    print(f"  Program length: {len(beam_res.best_program)} chars, steps: {beam_res.steps}")
+    print(f"  Output: {repr(beam_res.stdout)}")
 
-    for it in range(3000):
-        if it % 200 == 0:
-            elapsed = time.time() - t0
-            print(f"  it={it}, best={best_fit:.1f}, cur={cur_fit:.1f}, T={T:.3f}, t={time.time()-t0:.1f}s")
+    # 4. Ablative Minimization
+    print("\n[4] Running Ablative Minimization on synthesized program...")
+    ab_res = minimize_malbolge_program(beam_res.best_program, target_output="Hello World!")
+    if ab_res.get("success"):
+        print(f"  Ablation complete: NOPs simplified={ab_res['nops_simplified']}, output_match={ab_res['output_match']}")
 
-        T *= 0.995
-        if T < 0.01: T = 0.01
-
-        cand = ''.join(chr(random.randint(33,126)) if random.random()<0.1 else c for c in current)
-
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.mb', delete=False, encoding='ascii') as f:
-            f.write(cand)
-            tp = f.name
-
-        try:
-            r = UnifiedEvaluator().evaluate_all(Path(tp))
-            o = r.get('oracle')
-            if o and o.success:
-                out = o.stdout or ''
-                steps = o.steps
-                halt = o.halted
-                pref = sum(a==b for a,b in zip(o.stdout or '', "Hello World!"))
-                fit = (12 - sum(a==b for a,b in zip(o.stdout or '', "Hello World!"))) * 100
-                fit += steps / 100.0
-                fit += abs(len(o.stdout) - 12) * 10
-                if o.stdout.strip() == "Hello World!":
-                    fit = 0
-            else:
-                fit = 10000
-        except:
-            fit = 10000
-        finally:
-            try: os.unlink(tp)
-            except: pass
-
-        delta = fit - cur_fit
-        if fit <= cur_fit or random.random() < math.exp(-(fit - cur_fit)/T):
-            current = cand
-            cur_fit = fit
-            if fit < best_fit:
-                best_fit = fit
-                best_prog = cand
-                elapsed = time.time() - t0
-                print(f"  it={it}: BEST={best_fit:.1f}, T={T:.3f}, prog={cand[:40]}...")
-
-        if best_fit == 0:
-            print("\n*** FOUND PERFECT MATCH! ***")
-            print(f"Program: {best_prog}")
-            break
-
-        if it % 200 == 0:
-            elapsed = time.time() - t0
-            print(f"  it={it}: best={best_fit:.1f}, cur={cur_fit:.1f}, T={T:.3f}, t={time.time()-t0:.1f}s")
-
-        T *= 0.995
-        if T < 0.01: T = 0.01
-
-    elapsed = time.time() - start
-    print(f"\nDone in {time.time()-start:.1f}s, best fitness={best_fit}")
-    print(f"Best program: {best_prog[:50]}...")
-    return best_prog, best_fit
+    print("\n" + "=" * 60)
+    print("MALBOLGE OPERA SOLVER PIPELINE COMPLETE")
+    print("=" * 60)
+    return 0
 
 
 if __name__ == "__main__":
-    import sys
-    import time
-    import tempfile
-    import random
-    import math
-    import os
-
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-    import time
-    import tempfile
-    import random
-    import math
-    import os
-
-    from pathlib import Path
-    from opera.evaluator import UnifiedEvaluator
-
-    print("="*50)
-    print("FAST SA SEARCH - HELLO WORLD")
-    print("="*50)
-
-    evaluator = UnifiedEvaluator()
-    print("Backends:", list(UnifiedEvaluator().registry.backends.keys()))
-
-    # Verify
-    r = UnifiedEvaluator().evaluate_all(_hello_specimen())
-    for n, v in r.items():
-        print(f"  {n}: ok={v.success}, steps={v.steps}, out={v.stdout[:30] if v.stdout else ''}")
-
-    print("\nStarting SA...")
-    run_sa()
+    sys.exit(main())

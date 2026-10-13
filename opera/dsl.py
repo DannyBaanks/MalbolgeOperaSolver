@@ -54,7 +54,7 @@ class DannyScriptParser:
     # Regex patterns
     TARGET_RE = re.compile(r'^target\s+(.+)$', re.IGNORECASE)
     CONSTRAINT_RE = re.compile(r'^constraint\s+(\w+)\s*=\s*(.+)$', re.IGNORECASE)
-    OBJECTIVE_RE = re.compile(r'^(minimize|maximize)\s+(\w+)$', re.IGNORECASE)
+    OBJECTIVE_RE = re.compile(r'^(?:objective\s+)?(minimize|maximize)\s+(\w+)$', re.IGNORECASE)
     CONFIG_RE = re.compile(r'^config\s+(\w+)\s*=\s*(.+)$', re.IGNORECASE)
     COMMENT_RE = re.compile(r'^\s*#')
 

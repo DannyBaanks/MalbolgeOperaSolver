@@ -2,14 +2,19 @@
 """
 Ablative Minimization — Iterative reduction to minimal form.
 
-Based on the GPT Genesis ablative minimization phase:
-iteratively remove elements that aren't necessary for the target behavior.
+Provides:
+1. Malbolge program ablative reduction: trims dead instructions after halt,
+   simplifies non-essential opcodes to NOPs ('o'), and verifies output preservation.
+2. Component ablation for signature / candidate dictionaries.
 """
 from __future__ import annotations
 from typing import List, Dict, Any, Optional, Callable, Set, FrozenSet
 from dataclasses import dataclass
 import random
 import time
+
+from opera.evaluator import UnifiedEvaluator, EvalResult, run_malbolge_reference
+from opera.search.exhaustive import opcodes_to_malbolge, malbolge_to_opcodes
 
 
 @dataclass
@@ -30,41 +35,24 @@ class AblationResult:
     passes: int
     fitness_before: float
     fitness_after: float
-    history: List[Dict]
+    history: List[Dict] = None
 
 
 class AblativeMinimizer:
     """
-    Ablative minimization for reducing solutions to minimal form.
-
-    Iteratively tries to remove components; if fitness doesn't degrade,
-    keeps the removal. Repeats until fixed point or max passes.
-
-    Based on the GPT Genesis ablative minimization phase.
+    Ablative minimization engine for reducing solutions to minimal form.
     """
 
-    def __init__(self, fitness_fn, config=None):
-        self.fitness_fn = fitness_fn
-        self.config = config or type('Config', (), {
-            'max_passes': 10,
-            'shuffle_order': True,
-            'early_stop': True,
-            'min_improvement': 0.0,
-        })()
+    def __init__(self, fitness_fn: Optional[Callable] = None, config: Optional[AblativeConfig] = None):
+        self.fitness_fn = fitness_fn or (lambda x: 0.0)
+        self.config = config or AblativeConfig()
         self.rng = random.Random(42)
 
-    def minimize(self, candidate: Dict, fitness_fn: Callable) -> Dict:
+    def minimize(self, candidate: Dict, fitness_fn: Callable) -> Dict[str, Any]:
         """
-        Perform ablative minimization on a candidate.
-
-        Args:
-            candidate: Dictionary with 'birth', 'survival', 'live_sigs' etc.
-            fitness_fn: Function that takes candidate and returns fitness (lower=better)
-
-        Returns minimized candidate dict.
+        Perform ablative minimization on candidate signatures or components.
         """
-        # Get current fitness
-        current_fitness = self.fitness_fn(candidate)
+        current_fitness = fitness_fn(candidate)
         current = {
             'birth': list(candidate.get('birth', [])),
             'survival': list(candidate.get('survival', [])),
@@ -79,15 +67,11 @@ class AblativeMinimizer:
             changed = False
             passes += 1
 
-            # Get all active signatures
             active = list(current['live_sigs'])
             if self.config.shuffle_order:
                 self.rng.shuffle(active)
 
-            removed_this_pass = 0
-
             for sig in active:
-                # Try removing this signature
                 test_live = current['live_sigs'] - {sig}
                 test_candidate = {
                     'live_sigs': test_live,
@@ -95,10 +79,8 @@ class AblativeMinimizer:
                     'survival': [s for s in current['survival'] if s in test_live],
                 }
 
-                # Evaluate
-                test_fitness = self.fitness_fn(test_candidate)
+                test_fitness = fitness_fn(test_candidate)
 
-                # If fitness doesn't get worse (or improves), accept removal
                 if test_fitness <= current_fitness + self.config.min_improvement:
                     current['live_sigs'] = test_live
                     current['birth'] = [s for s in current['birth'] if s in test_live]
@@ -109,10 +91,12 @@ class AblativeMinimizer:
                         'pass': passes,
                         'removed': sig,
                         'fitness_before': current_fitness,
-                        'fitness_after': fitness_fn(test_candidate),
+                        'fitness_after': test_fitness,
                     })
+                    current_fitness = test_fitness
 
-                    current_fitness = fitness_fn(test_candidate)
+        initial_len = len(candidate.get('live_sigs', []))
+        final_len = len(current['live_sigs'])
 
         return {
             'minimized': {
@@ -120,149 +104,105 @@ class AblativeMinimizer:
                 'survival': sorted(current['survival']),
                 'live_sigs': sorted(current['live_sigs']),
             },
-            'original_fitness': self.fitness_fn(candidate) if hasattr(candidate, 'get') else self.fitness_fn(candidate),
-            'final_fitness': self.fitness_fn({
-                'birth': sorted(current['birth']),
-                'survival': sorted(current['survival']),
-                'live_sigs': current['live_sigs'],
-            }),
-            'removed_count': len(candidate.get('live_sigs', [])) - len(current['live_sigs']),
+            'removed_count': initial_len - final_len,
             'passes': passes,
             'history': history,
         }
 
-    def iterative_deepening(self, candidate: Dict, fitness_fn: Callable,
-                            max_depth: int = 10) -> List[Dict]:
+    def minimize_malbolge_program(
+        self,
+        source: str,
+        target_output: Optional[str] = None,
+        max_steps: int = 1_000_000,
+    ) -> Dict[str, Any]:
         """
-        Iterative deepening ablation: progressively more aggressive removal.
-
-        Returns list of increasingly minimized candidates.
+        Ablatively minimize a real Malbolge program:
+        1. Evaluates baseline run (capturing stdout and halt step).
+        2. Trims code after the halt instruction 'v'.
+        3. Tries replacing candidate opcodes with NOP ('o') one-by-one,
+           verifying that output and termination are 100% preserved.
         """
-        results = []
-        current = candidate
+        evaluator = UnifiedEvaluator()
+        baseline = evaluator.evaluate_reference(source, max_steps=max_steps)
+        if not baseline.halted:
+            return {
+                "success": False,
+                "error": "Cannot minimize non-halting program",
+                "original_program": source,
+                "minimized_program": source,
+            }
 
-        for depth in range(1, max_depth + 1):
-            # Create config with increasing aggressiveness
-            config = type('Config', (), {
-                'max_passes': depth,
-                'shuffle_order': True,
-                'min_improvement': 0.0,
-            })()
+        expected_out = target_output if target_output is not None else baseline.stdout
+        raw_clean = "".join(source.split())
 
-            minimizer = AblativeMinimizer(self.fitness_fn, config)
-            result = minimizer.minimize(candidate, fitness_fn)
+        try:
+            opcodes = malbolge_to_opcodes(raw_clean)
+        except Exception:
+            return {
+                "success": False,
+                "error": "Failed to decode opcodes",
+                "original_program": source,
+                "minimized_program": source,
+            }
 
-            results.append({
-                'depth': depth,
-                'minimized': result['minimized'],
-                'removed': result['removed_count'],
-                'fitness': result['fitness_after'],
-            })
+        op_list = list(opcodes)
+        initial_length = len(op_list)
 
-            # If no more can be removed, stop
-            if result['removed_count'] == 0:
-                break
+        # Step 1: Trim instructions after the first 'v' (halt)
+        if 'v' in op_list:
+            halt_idx = op_list.index('v')
+            # Test if trimming up to halt_idx + 1 works
+            trimmed_ops = op_list[:halt_idx + 1]
+            trimmed_prog = opcodes_to_malbolge("".join(trimmed_ops))
+            res = evaluator.evaluate_reference(trimmed_prog, max_steps=max_steps)
+            if res.halted and res.stdout == expected_out:
+                op_list = trimmed_ops
 
-        return results
+        # Step 2: Pass through opcodes, attempting NOP simplification
+        nop_simplified = 0
+        for i in range(len(op_list)):
+            if op_list[i] in ('v', 'o'):
+                continue
+            orig_op = op_list[i]
+            op_list[i] = 'o'  # try NOP
+            candidate_prog = opcodes_to_malbolge("".join(op_list))
+            res = evaluator.evaluate_reference(candidate_prog, max_steps=max_steps)
+            if res.halted and res.stdout == expected_out:
+                nop_simplified += 1
+            else:
+                op_list[i] = orig_op  # revert
+
+        minimized_opcodes = "".join(op_list)
+        minimized_prog = opcodes_to_malbolge(minimized_opcodes)
+        final_eval = evaluator.evaluate_reference(minimized_prog, max_steps=max_steps)
+
+        return {
+            "success": True,
+            "original_length": initial_length,
+            "minimized_length": len(minimized_opcodes),
+            "bytes_saved": initial_length - len(minimized_opcodes),
+            "nops_simplified": nop_simplified,
+            "original_program": raw_clean,
+            "minimized_program": minimized_prog,
+            "minimized_opcodes": minimized_opcodes,
+            "output_match": final_eval.stdout == expected_out,
+            "stdout": final_eval.stdout,
+            "steps": final_eval.steps,
+        }
 
 
-def ablative_minimize(candidate: Dict, fitness_fn: Callable,
-                      max_passes: int = 10,
-                      shuffle: bool = True) -> Dict:
-    """
-    Convenience function for single ablative minimization pass.
-
-    Args:
-        candidate: Dict with 'birth', 'survival', 'live_sigs'
-        fitness_fn: Function(candidate) -> fitness (lower=better)
-        max_passes: Maximum number of passes
-        shuffle: Whether to shuffle removal order
-
-    Returns:
-        Minimized candidate dict with history
-    """
-    minimizer = AblativeMinimizer(
-        fitness_fn,
-        type('Config', (), {'max_passes': 10, 'shuffle_order': shuffle, 'min_improvement': 0.0})()
-    )
+def ablative_minimize(
+    candidate: Dict, fitness_fn: Callable, max_passes: int = 10
+) -> Dict[str, Any]:
+    """Convenience function for ablative minimization."""
+    cfg = AblativeConfig(max_passes=max_passes)
+    minimizer = AblativeMinimizer(fitness_fn=fitness_fn, config=cfg)
     return minimizer.minimize(candidate, fitness_fn)
 
 
-def iterative_ablation(candidate: Dict, fitness_fn: Callable,
-                       max_depth: int = 5) -> List[Dict]:
-    """
-    Iterative deepening ablation.
-
-    Returns list of progressively more minimized candidates.
-    """
-    results = []
-    current = candidate
-
-    for depth in range(1, max_depth + 1):
-        result = ablative_minimize(current, fitness_fn, max_passes=depth)
-        results.append({
-            'depth': depth,
-            'minimized': result['minimized'],
-            'removed': result['removed_count'],
-            'fitness_before': result['fitness_before'],
-            'fitness_after': result['fitness_after'],
-        })
-        current = result['minimized']
-
-        if result['removed_count'] == 0:
-            break
-
-    return results
-
-
-def ablate_program(program_bytes: bytes, fitness_fn: Callable,
-                   max_passes: int = 10) -> bytes:
-    """
-    Ablative minimization for raw Malbolge program bytes.
-
-    Iteratively tries to remove bytes from the program while
-    maintaining fitness.
-    """
-    current = bytearray(program_bytes)
-    best_fitness = fitness_fn(bytes(current))
-    passes = 0
-    changed = True
-
-    while passes < 10 and changed:
-        changed = False
-        passes += 1
-
-        # Try removing each byte
-        indices = list(range(len(current)))
-        random.shuffle(indices)
-
-        for idx in indices:
-            # Try removing this byte
-            test = current[:idx] + current[idx+1:]
-            test_fitness = fitness_fn(bytes(test))
-
-            if test_fitness <= fitness_fn(bytes(current)):
-                # Removal didn't hurt - keep it removed
-                current = test
-                changed = True
-                break  # Restart from beginning
-
-    return bytes(current)
-
-
-if __name__ == "__main__":
-    # Quick test
-    def dummy_fitness(candidate):
-        live = len(candidate.get('live_sigs', []))
-        return live  # Minimize live signatures
-
-    candidate = {
-        'birth': [1, 2, 4],
-        'survival': [8],
-        'live_sigs': {1, 2, 4, 8},
-    }
-
-    result = ablative_minimize(candidate, dummy_fitness, max_passes=3)
-    print(f"Removed: {result['removed_count']}")
-    print(f"Final live_sigs: {result['minimized']['live_sigs']}")
-    print(f"Passes: {result['passes']}")
+def minimize_malbolge_program(
+    source: str, target_output: Optional[str] = None
+) -> Dict[str, Any]:
+    """Convenience function to minimize a Malbolge program."""
+    minimizer = AblativeMinimizer()
+    return minimizer.minimize_malbolge_program(source, target_output=target_output)
