@@ -1,7 +1,8 @@
-# Malbolge Opera Solver (2026 Edition)
+# Malbolge Opera Solver v2.0 (2026 Edition)
 
 ![Malbolge Opera Solver pipeline](malbolge_opera_solver.gif)
 
+[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/DannyBaanks/malbolge-opera-solver)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Status: Verified 2026](https://img.shields.io/badge/status-verified%20pass-brightgreen.svg)](#verificación-y-benchmarks)
