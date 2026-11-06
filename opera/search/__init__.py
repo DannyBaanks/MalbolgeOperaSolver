@@ -1,4 +1,17 @@
 # Danny search package
+from opera.search.conveyor import (
+    ConveyorSynthesizer,
+    synthesize_conveyor,
+    can_conveyor_fit,
+    conveyor_capacity,
+    ConveyorResult,
+)
+from opera.search.ripple import (
+    RippleSynthesizer,
+    synthesize_ripple_counter,
+    generate_ripple_counter_hell,
+    RippleCounterResult,
+)
 from opera.search.beam import BeamSearchEngine, SearchResult as BeamSearchResult
 from opera.search.exhaustive import (
     ExhaustiveSearch,
@@ -18,6 +31,15 @@ from opera.search.ablative import (
 )
 
 __all__ = [
+    "ConveyorSynthesizer",
+    "synthesize_conveyor",
+    "can_conveyor_fit",
+    "conveyor_capacity",
+    "ConveyorResult",
+    "RippleSynthesizer",
+    "synthesize_ripple_counter",
+    "generate_ripple_counter_hell",
+    "RippleCounterResult",
     "BeamSearchEngine",
     "BeamSearchResult",
     "ExhaustiveSearch",

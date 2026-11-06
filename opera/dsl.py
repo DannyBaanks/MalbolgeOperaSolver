@@ -26,6 +26,13 @@ from typing import Optional
 from pathlib import Path
 
 
+PRESETS = {
+    "hello": "Hello World!",
+    "quijote_opening": "En un lugar de la Mancha, de cuyo nombre no quiero acordarme...",
+    "opera": "Danny Opera Solver 2026",
+}
+
+
 @dataclass
 class DannySpec:
     """Parsed DannyScript specification."""
@@ -37,10 +44,13 @@ class DannySpec:
     def validate(self) -> list[str]:
         """Validate the spec, return list of errors."""
         errors = []
-        if not self.target:
+        is_ripple = self.config.get("engine") == "ripple" or "stages" in self.config or "stages" in self.constraints
+        if not self.target and not is_ripple:
             errors.append("Missing target specification")
         if "backend" not in self.config:
-            self.config["backend"] = "bolge19"
+            self.config["backend"] = "reference"
+        if "engine" not in self.config:
+            self.config["engine"] = "auto"
         if "seed" not in self.config:
             self.config["seed"] = 42
         if "max_steps" not in self.constraints:
@@ -53,6 +63,9 @@ class DannyScriptParser:
 
     # Regex patterns
     TARGET_RE = re.compile(r'^target\s+(.+)$', re.IGNORECASE)
+    PRESET_RE = re.compile(r'^preset\s+(\w+)$', re.IGNORECASE)
+    ENGINE_RE = re.compile(r'^engine\s+(\w+)$', re.IGNORECASE)
+    STAGES_RE = re.compile(r'^stages\s+(\d+)$', re.IGNORECASE)
     CONSTRAINT_RE = re.compile(r'^constraint\s+(\w+)\s*=\s*(.+)$', re.IGNORECASE)
     OBJECTIVE_RE = re.compile(r'^(?:objective\s+)?(minimize|maximize)\s+(\w+)$', re.IGNORECASE)
     CONFIG_RE = re.compile(r'^config\s+(\w+)\s*=\s*(.+)$', re.IGNORECASE)
@@ -79,6 +92,16 @@ class DannyScriptParser:
                    (target.startswith("'") and target.endswith("'")):
                     target = target[1:-1]
                 self.spec.target = target
+            elif m := self.PRESET_RE.match(line):
+                preset_name = m.group(1).lower()
+                if preset_name in PRESETS:
+                    self.spec.target = PRESETS[preset_name]
+                else:
+                    raise ValueError(f"Unknown preset: {preset_name}. Valid presets: {list(PRESETS.keys())}")
+            elif m := self.ENGINE_RE.match(line):
+                self.spec.config["engine"] = m.group(1).lower()
+            elif m := self.STAGES_RE.match(line):
+                self.spec.config["stages"] = int(m.group(1))
             elif m := self.CONSTRAINT_RE.match(line):
                 key = m.group(1).lower()
                 val = m.group(2).strip()

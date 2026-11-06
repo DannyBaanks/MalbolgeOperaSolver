@@ -14,6 +14,16 @@ from typing import Iterator, List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 
 from opera.evaluator import UnifiedEvaluator, EvalResult
+from opera.search.conveyor import (
+    synthesize_conveyor,
+    can_conveyor_fit,
+    ConveyorResult,
+)
+from opera.search.ripple import (
+    synthesize_ripple_counter,
+    RippleCounterResult,
+    find_lmao,
+)
 from opera.search.beam import BeamSearchEngine
 from opera.search.exhaustive import ExhaustiveSearch, ExhaustiveSearchConfig
 from opera.search.sa import SimulatedAnnealingSearch, SAConfig
@@ -27,7 +37,7 @@ class MetaSearchConfig:
     max_survival_signatures: int = 1
     max_combinations: Optional[int] = None
     single_bit_masks: Tuple[int, ...] = (1, 2, 4, 8, 16, 32, 64, 128)
-    strategy_preference: str = "auto"  # 'auto', 'beam', 'exhaustive', 'sa'
+    strategy_preference: str = "auto"  # 'auto', 'conveyor', 'beam', 'exhaustive', 'sa', 'ripple'
 
 
 @dataclass
@@ -80,16 +90,76 @@ class MetaSearch:
                 "k": 1,
             }
 
-    def solve(self, target: str) -> MetaSearchResult:
+    def solve(self, target: str, strategy: Optional[str] = None) -> MetaSearchResult:
         """
-        Automatically select and execute the best search strategy for a target.
+        Automatically select and execute the best search or synthesis strategy for a target.
         """
         t0 = time.perf_counter()
+        pref = (strategy or self.config.strategy_preference).lower()
 
-        # For text targets, BeamSearchEngine produces byte-exact verified programs
+        # 1. Autobolge 2.0 Conveyor Synthesis (O(N) deterministic, sterile gap <= 3,194 cells)
+        if pref in ("conveyor", "auto") and can_conveyor_fit(target):
+            try:
+                c_res = synthesize_conveyor(target, verify=True)
+                if c_res.verified:
+                    return MetaSearchResult(
+                        found=True,
+                        best_program=c_res.program,
+                        best_opcodes="",
+                        best_fitness=0.0,
+                        strategy_used="autobolge_conveyor",
+                        tested=1,
+                        elapsed_ms=c_res.elapsed_ms,
+                        metadata={
+                            "opcode_count": c_res.opcode_count,
+                            "data_cells": c_res.data_cells,
+                            "steps": c_res.steps,
+                            "sha256": c_res.sha256,
+                        },
+                    )
+            except Exception as e:
+                if pref == "conveyor":
+                    return MetaSearchResult(
+                        found=False,
+                        best_fitness=float('inf'),
+                        strategy_used="conveyor_error",
+                        elapsed_ms=(time.perf_counter() - t0) * 1000,
+                        metadata={"error": str(e)},
+                    )
+
+        # 2. Simulated Annealing if explicitly requested
+        if pref == "sa":
+            sa = SimulatedAnnealingSearch(self.evaluator)
+            sa_res = sa.search_malbolge_program(target)
+            elapsed = (time.perf_counter() - t0) * 1000
+            return MetaSearchResult(
+                found=sa_res["found"],
+                best_program=sa_res["best_program"],
+                best_opcodes=sa_res["best_opcodes"],
+                best_fitness=sa_res["best_fitness"],
+                strategy_used="simulated_annealing",
+                tested=sa_res["steps"],
+                elapsed_ms=elapsed,
+            )
+
+        # 3. Exhaustive Opcode Search for very short targets or explicit request
+        if pref == "exhaustive" or (len(target) <= 2 and pref == "auto"):
+            ex_search = ExhaustiveSearch(self.evaluator)
+            ex_res = ex_search.search_for_output(target, max_length=4)
+            if ex_res.found:
+                return MetaSearchResult(
+                    found=True,
+                    best_program=ex_res.best_program,
+                    best_opcodes=ex_res.best_opcodes,
+                    best_fitness=0.0,
+                    strategy_used="exhaustive_opcode",
+                    tested=ex_res.candidates_tested,
+                    elapsed_ms=(time.perf_counter() - t0) * 1000,
+                )
+
+        # 4. Beam State-Space Search (default / fallback for custom constraints)
         beam_engine = BeamSearchEngine(self.evaluator)
         res = beam_engine.search_for_string(target)
-
         elapsed = (time.perf_counter() - t0) * 1000
 
         if res.found:
@@ -103,21 +173,6 @@ class MetaSearch:
                 elapsed_ms=elapsed,
                 metadata=res.metadata,
             )
-
-        # Fallback to exhaustive opcode search for very short targets
-        if len(target) <= 2:
-            ex_search = ExhaustiveSearch(self.evaluator)
-            ex_res = ex_search.search_for_output(target, max_length=4)
-            if ex_res.found:
-                return MetaSearchResult(
-                    found=True,
-                    best_program=ex_res.best_program,
-                    best_opcodes=ex_res.best_opcodes,
-                    best_fitness=0.0,
-                    strategy_used="exhaustive_opcode",
-                    tested=ex_res.candidates_tested,
-                    elapsed_ms=(time.perf_counter() - t0) * 1000,
-                )
 
         return MetaSearchResult(
             found=False,

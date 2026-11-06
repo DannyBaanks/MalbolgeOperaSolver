@@ -2,6 +2,7 @@
 from opera.verify.walbolge import WalbolgeVerifier, WalbolgeResult
 from opera.verify.autobolge import AutobolgeVerifier, AutobolgeResult, BOLG1Record, BOLG2Result, run_autobolge
 from opera.verify.continuation import verify_fresh_vm_continuation, ContinuationEvidence
+from opera.verify.oracle import OracleVerifier, OracleVerificationResult, find_canonical_oracle
 
 __all__ = [
     "WalbolgeVerifier",
@@ -13,4 +14,7 @@ __all__ = [
     "run_autobolge",
     "verify_fresh_vm_continuation",
     "ContinuationEvidence",
+    "OracleVerifier",
+    "OracleVerificationResult",
+    "find_canonical_oracle",
 ]

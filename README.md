@@ -1,182 +1,241 @@
-# Malbolge Opera Solver
+# Malbolge Opera Solver (2026 Edition)
 
 ![Malbolge Opera Solver pipeline](malbolge_opera_solver.gif)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Status: Verified](https://img.shields.io/badge/status-verified%20pass-brightgreen.svg)](#verificación-y-benchmarks)
+[![Status: Verified 2026](https://img.shields.io/badge/status-verified%20pass-brightgreen.svg)](#verificación-y-benchmarks)
 
-**Malbolge Opera Solver** — framework integral de síntesis por espacio de estados, búsqueda posicional estocástica, normalización y verificación multi-backend de programas Malbolge.
+**Malbolge Opera Solver** — framework integral de síntesis determinista constructiva $O(N)$, búsqueda por espacio de estados, optimización estocástica posicional, síntesis de contadores ripple con expansión positiva y verificación multi-oráculo canónico (Python y C nativo).
 
-Autor: **Danny Banks** · Licencia: MIT
+Autor: **Danny Banks** · Licencia: MIT · ISyCo Research
 
 ---
 
-## Qué es
+## Novedades 2026 — Motores de Última Generación
 
-Un framework avanzado diseñado para dominar la complejidad auto-modificante de Malbolge (3^10 Classic y 3^19 Unshackled):
+Esta edición moderniza radicalmente el solver incorporando los avances descubiertos en **Autobolge 2.0**, **BolgeForge** y la investigación **XLAT2**:
 
-- **Síntesis por Espacio de Estados (Beam Search)**: Genera programas de Malbolge puro que imprimen texto arbitrario de forma exacta en milisegundos.
-- **Búsqueda Posicional Guiada (Simulated Annealing)**: Optimización estocástica sobre el espacio de opcodes canónicos (`v`, `o`, `p`, `*`, `<`, `/`, `i`, `j`) mapeados posicionalmente módulo 94.
-- **Minimización Ablativa Real**: Compresión y simplificación de programas Malbolge: poda instrucciones muertas tras halt (`v`) y reemplaza opcodes no esenciales con NOPs (`o`) preservando el 100% de la salida y el comportamiento de parada.
-- **Verificación de Continuidad Cross-VM (Primitiva E0)**: Demuestra que un programa puede dividirse, capturar su snapshot (`a, c, d, memoria`) y reanudarse en una VM fresca produciendo salida y SHA-256 idénticos.
-- **Evaluador In-Process de Ultra-Alto Rendimiento**: Intérprete canónico en memoria que ejecuta miles de pasos por segundo con soporte para backends externos (malbolge-oracle, Walbolge, Autobolge, bolge19).
+1. **Autobolge 2.0 Constructive Conveyor Engine ($O(N)$)**:
+   - Síntesis algebraica directa en **2–5 milisegundos** con **CERO búsqueda bruta**.
+   - Salto cuántico de alta memoria ($c=0 \to 3315, d=121$) sobre brecha estéril de 3,194 celdas ($\Delta c \equiv \Delta d$).
+   - Matriz de emisión con recetas dinámicas para todo ASCII imprimible + salto de línea.
+   - Parada limpia (`v`, opcode 81) sin lecturas espurias de stdin.
+
+2. **XLAT2 Nested Ripple Counter Synthesizer (Expansión Positiva)**:
+   - Generación y ensamblado de cascadas de $N$ etapas independientes de ciclo 5 (`Nop/Nop/Nop/Nop/MovD`).
+   - Salida escalada a $5^N$ caracteres (ej. etapa 7: **78,125 bytes** emitidos desde sólo 5,360 celdas).
+   - Ratio de expansión demostrado de **$14.58\times$** con parada limpia garantizada.
+
+3. **Oráculo C Canónico Estricto (`mb_ref` de BolgeForge)**:
+   - Integración nativa del oráculo de Ben Olmstead compilado en C nativo.
+   - Verificación de ejecución en **sub-3 milisegundos** (aceleración de hasta 20x sobre el intérprete Python).
+
+4. **Orquestador MetaSearch Inteligente**:
+   - Enrutamiento automático: si el objetivo cabe en la brecha estéril del conveyor, sintetiza instantáneamente vía Autobolge 2.0; si requiere optimizaciones posicionales o de tamaño extremas, recurre a Beam Search o Simulated Annealing.
 
 ---
 
 ## Quick Start
 
-### 1. Sintetizar un programa desde DannyScript
+### 1. Síntesis Instantánea con Autobolge 2.0 Conveyor
 
-Crea un archivo de especificación `hello.danny`:
-```text
-target "Hello World!"
-constraint max_steps = 1000000
-objective minimize size
-```
-
-Ejecuta el solver con minimización ablativa automática:
 ```bash
-python3 opera.py solve hello.danny -o hello.mal --minimize
+# Sintetizar directamente desde la línea de comandos en 2 ms
+python3 opera.py solve -t "Hello World!" --engine conveyor
+
+# O utilizando un archivo DannyScript con presets
+python3 opera.py solve opera_script/hello.danny
 ```
 
-Salida esperada:
+Salida:
 ```text
 ============================================================
-DANNY OPERA SOLVER — SOLVE
+DANNY OPERA SOLVER — SOLVE (2026)
 ============================================================
 Target:       'Hello World!'
-Constraints:  {'max_steps': 1000000}
-Objectives:   [('minimize', 'size')]
+Engine:       AUTO
 
-Running ablative minimization...
-  Ablation complete: saved 0 bytes, simplified 91 NOPs
+Synthesizing via Autobolge 2.0 Conveyor Engine (O(N) Constructive)...
+  [OK] Conveyor synthesis completed in 2.15 ms (46 VM steps)
 
 ------------------------------------------------------------
 SOLVED PROGRAM:
 ------------------------------------------------------------
-Length:       324 chars
-SHA-256:      5fe6a3f7d1444eba50a207a793f25b5362b4ffd31005065b0a2b152eed7a4e4e
-Steps:        226
+Length:       3350 chars
+SHA-256:      3bb4fb578b014fcd71fcaa9c4aec23ff79a211d9c7b107c72d721e5539184e38
+Steps:        46
 Output:       'Hello World!'
-Saved to: hello.mal
 ```
 
 ---
 
-### 2. Normalizar una cinta Malbolge a mnemónicos
+### 2. Sintetizar Contadores Ripple con Expansión Positiva
 
-Decodifica cualquier programa binario/ASCII a sus opcodes normalizados según su desplazamiento posicional:
+Genera un programa autónomo que emite $5^N$ caracteres en cascada mediante el contador ripple XLAT2:
+
 ```bash
-python3 opera.py normalize hello.mal
+# Sintetizar contador de 5 etapas (3,125 caracteres emitidos)
+python3 opera.py ripple --stages 5 -c "A" -o ripple5.mal
+
+# Sintetizar contador de 7 etapas (78,125 caracteres, ratio 14.58x)
+python3 opera.py ripple --stages 7 -c "A"
 ```
 
 Salida:
 ```text
 ============================================================
-NORMALIZATION: hello.mal
+XLAT2 NESTED RIPPLE COUNTER SYNTHESIZER
 ============================================================
-Raw length:     324
-Opcodes:        iooooooooooooooooooooooooooooooooo...
+Stages:           7
+Character:        'A'
+Expected Outputs: 78,125 chars
 
-POS   CHAR  OPCODE
-------------------
-0000  'b'   i
-0001  'C'   o
-0002  'B'   o
-0003  'A'   o
-...
+------------------------------------------------------------
+RIPPLE SYNTHESIS RESULT:
+------------------------------------------------------------
+Source Size:      5360 bytes
+Output Emitted:   78,125 bytes
+Expansion Ratio:  14.58x (POSITIVE EXPANSION!)
+Exact Match:      True
+Clean HALT:       True
+SHA-256:          b52125fbe3be60ad0cce06c88f11ca855071dfb25696d744b1c7cae51f472d62
 ```
 
 ---
 
-### 3. Verificar Continuidad Cross-VM (Primitiva E0)
+### 3. Ejecutar la Suite de Benchmarks Comparativa
 
-Verifica que el programa cumple la propiedad formal de continuidad multi-época:
+Compara el rendimiento y comportamiento de todos los motores en tu máquina:
+
 ```bash
-python3 opera.py verify hello.mal --continuation
+python3 opera.py benchmark
+```
+
+Salida típica:
+```text
+============================================================
+MALBOLGE OPERA SOLVER — 2026 BENCHMARK SUITE
+============================================================
+Benchmark Target: 'Hello World!'
+
+[1] Autobolge 2.0 Conveyor Engine (Constructive O(N)):
+    Synthesis Time:   2.15 ms
+    Total with VM:    3.20 ms
+    Program Length:   3350 cells
+    VM Execution:     46 steps
+    Verified Output:  'Hello World!'
+
+[2] Beam State-Space Search (Iterative Heuristic):
+    Synthesis Time:   371.65 ms
+    Found Exact:      True
+    Program Length:   317 cells
+    VM Steps:         219 steps
+
+[3] XLAT2 Nested Ripple Counter (Positive Expansion):
+    Stages=3: 3649B -> 125 chars | Ratio:   0.03x 
+    Stages=5: 4608B -> 3,125 chars | Ratio:   0.68x 
+    Stages=7: 5360B -> 78,125 chars | Ratio:  14.58x (EXPANSION)
+
+[4] Backend Execution Speed (specimens/hello_solved.mal):
+    Reference VM (Py): 58.06 ms | stdout='Hello World!'
+    C Oracle (mb_ref): 3.07 ms | stdout='Hello World!'
+============================================================
+BENCHMARK COMPLETED SUCCESSFULLY
+============================================================
+```
+
+---
+
+### 4. Verificación Multi-Oráculo con Oráculo C de BolgeForge
+
+```bash
+# Validar espécimen con VM Python y Oráculo C (mb_ref)
+python3 opera.py verify specimens/hello_solved.mal --mb-ref
 ```
 
 Salida:
 ```text
 ============================================================
-VERIFY SPECIMEN: hello.mal
+VERIFY SPECIMEN: specimens/hello_solved.mal
 ============================================================
 Reference VM (3^10):
   Success:     True
   Halted:      True (halt_opcode)
   Steps:       226
   Stdout:      'Hello World!'
+  Elapsed:     55.77 ms
 
---- Fresh-VM Continuation (Primitive E0) ---
-  Continuation Pass:  True
-  Split Step:         113
-  Concatenated Match: True
-  SHA-256 Match:      True
+--- Canonical C Oracle (mb_ref) ---
+  Success:     True
+  Halted:      True (halt_opcode)
+  Stdout:      'Hello World!'
+  Elapsed:     3.64 ms
 ```
 
 ---
 
-### 4. Minimización Ablativa de un Programa Existente
+## Sintaxis DannyScript / OperaScript Extendida
 
-Reduce programas eliminando opcodes redundantes y sustituyendo operaciones complejas por NOPs:
-```bash
-python3 opera.py ablate specimen.mal -o minimized.mal
+El DSL ahora soporta selección de motor, etapas ripple y presets canónicos:
+
+```text
+# Ejemplo con preset y motor conveyor
+preset hello
+engine conveyor
+objective minimize size
+
+# Ejemplo para contador ripple
+engine ripple
+stages 5
+target "X"
 ```
+
+Presets incluidos: `hello`, `quijote_opening`, `opera`.
 
 ---
 
-## Arquitectura
+## Arquitectura del Proyecto
 
 ```
 opera/
-├── dsl.py              # Parser para DannyScript / OperaScript DSL
-├── evaluator.py        # Evaluador unificado (VM Reference in-process + multi-backend)
+├── dsl.py              # Parser DannyScript / OperaScript DSL (presets, engine, stages)
+├── evaluator.py        # Evaluador unificado (VM Reference 3^10 + C Oracle mb_ref + bolge19)
 ├── objectives.py       # Evaluación multi-objetivo y restricciones
 ├── search/
-│   ├── beam.py         # Síntesis por espacio de estados (Beam Search)
+│   ├── conveyor.py     # Autobolge 2.0 Constructive Conveyor Synthesizer O(N)
+│   ├── ripple.py       # XLAT2 Nested Ripple Counter Synthesizer (expansión 14.58x)
+│   ├── beam.py         # Síntesis heurística por espacio de estados (Beam Search)
 │   ├── exhaustive.py   # Enumeración exhaustiva de opcodes y mapeo posicional
 │   ├── sa.py           # Simulated Annealing posicional guiado
-│   ├── meta.py         # Coordinador y orquestador de estrategias de búsqueda
+│   ├── meta.py         # Orquestador y selector dinámico de estrategias
 │   └── ablative.py     # Minimizador ablativo y compresor de opcodes
 ├── verify/
-│   ├── continuation.py # Verificación formal Fresh-VM Continuation (E0)
+│   ├── oracle.py       # Verificador del Oráculo C Canónico (mb_ref BolgeForge)
+│   ├── continuation.py # Verificación formal Fresh-VM Continuation (Primitiva E0)
 │   ├── walbolge.py     # Decompilación inversa y roundtrip con Walbolge
 │   └── autobolge.py    # Contenedores BOLG1/BOLG2
-└── cli.py              # CLI principal (solve, normalize, verify, search, ablate)
+└── cli.py              # CLI principal (solve, ripple, benchmark, normalize, verify, ablate)
+tests/
+└── test_modern_engines.py # Suite de pruebas automatizada de motores 2026
 ```
 
 ---
 
-## Backends Soportados
-
-| Backend | Tipo | Rol |
-|---|---|---|
-| `reference` | In-process Python | VM canónica 3^10 Classic, microsegundos de latencia, 0 dependencias externas |
-| `toolkit` | In-process Python | Adaptador de generación y síntesis `malbolge-generator` |
-| `oracle` | Python | Intérprete de referencia de control (`malbolge-oracle`) |
-| `Autobolge` | Nativo / Contenedor | Contenedor binario BOLG1/BOLG2 (Zig) |
-| `Walbolge` | Python | Decompilador estructural inverso del Translator |
-| `bolge19` | Nativo Zig | VM 3^19 Unshackled para MalbolgeLISP |
-
----
-
-## Verificación y Benchmarks
-
-El repositorio incluye suites de pruebas que validan todas las estrategias y backends:
+## Verificación y Pruebas
 
 ```bash
-# 1. Pipeline completo (Exhaustive, SA, Meta, Ablative)
+# 1. Suite automatizada de nuevos motores 2026 (100% PASS)
+python3 -m unittest tests/test_modern_engines.py
+
+# 2. Pipeline completo clásico (Exhaustive, SA, Meta, Ablative)
 python3 test_pipeline_final.py
 
-# 2. Benchmark cruzado de Hello World (Reference + Oracle)
+# 3. Benchmark cruzado de Hello World (Reference + Oracle + mb_ref)
 python3 test_hello_search.py
 
-# 3. Verificación de espécimen largo (Capítulo 1 de Don Quijote)
+# 4. Verificación de espécimen largo (Capítulo 1 de Don Quijote en 3 oráculos)
 python3 test_quijote.py
-
-# 4. Demostración integral de SA posicional y síntesis Beam
-python3 sa_search_final.py
 ```
 
 ---
@@ -185,7 +244,7 @@ python3 sa_search_final.py
 
 Este proyecto es trabajo original de **Danny Banks** dentro de **ISyCo (Interactive System for Coevolution)**.
 
-Los backends referenciados (`malbolge-oracle`, `Walbolge`, `Autobolge`, `bolge19`, `fast20`) pertenecen al ecosistema ISyCo y a sus autores respectivos.
+Los componentes y oráculos integrados (`Autobolge 2.0`, `BolgeForge`, `PureEpoch`, `LMAO`, `Walbolge`, `bolge19`) pertenecen al ecosistema de investigación de esolangs de ISyCo.
 
 ---
 

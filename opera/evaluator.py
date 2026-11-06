@@ -224,6 +224,28 @@ class BackendRegistry:
                     sys.path.insert(0, str(td))
                 break
 
+        # 2b. Strict Canonical C Oracle (mb_ref / reference_interpreter_classic)
+        mb_ref_candidates = [
+            Path("/home/danny/Development/ISyCo Git/BolgeForge/mb_ref"),
+            Path("/home/danny/Development/ISyCo/workspace/assembly/malbolge/reference_interpreter_classic"),
+            Path("/home/danny/Development/ISyCo Git/Malbolge-PureEpoch/vendor/mb_ref"),
+            self.repo_root / "workspace" / "assembly" / "malbolge" / "reference_interpreter_classic",
+        ]
+        mb_ref_env = os.environ.get("OPERA_MB_REF")
+        if mb_ref_env:
+            mb_ref_candidates.insert(0, Path(mb_ref_env))
+
+        for cand in mb_ref_candidates:
+            if cand.exists() and (os.name == "nt" or os.access(cand, os.X_OK)):
+                supports_steps = "mb_ref" in cand.name
+                self.backends["mb_ref"] = {
+                    "type": "native_c",
+                    "exe": cand,
+                    "supports_10trit": True,
+                    "supports_max_steps": supports_steps,
+                }
+                break
+
         # 3. bolge19 (native Zig)
         bolge19_candidates = [
             self.repo_root / "experiments0000" / "MalbolgeLisp Vs Isyco" / "runtime" / "bolge19.exe",
@@ -354,6 +376,8 @@ class UnifiedEvaluator:
         elif backend == "bolge19":
             p = Path(source_or_path)
             return self.evaluate_bolge19(p, str(stdin_data), max_steps)
+        elif backend in ("mb_ref", "oracle_c"):
+            return self.evaluate_mb_ref(source_or_path, stdin_data, max_steps)
         elif backend == "autobolge":
             p = Path(source_or_path)
             stdin_bytes = stdin_data.encode() if isinstance(stdin_data, str) else stdin_data
@@ -463,6 +487,83 @@ class UnifiedEvaluator:
         except Exception as e:
             return EvalResult(success=False, backend="oracle", stderr=str(e))
 
+    def evaluate_mb_ref(
+        self,
+        source_or_path: Union[str, Path],
+        stdin_data: Union[str, bytes] = b"",
+        max_steps: int = 100_000_000,
+    ) -> EvalResult:
+        """Evaluate using BolgeForge strict canonical C oracle (mb_ref)."""
+        backend = self.registry.backends.get("mb_ref")
+        if not backend:
+            res = self.evaluate_reference(source_or_path, stdin_data, max_steps)
+            res.backend = "reference_fallback"
+            return res
+
+        tmp_path = None
+        if isinstance(source_or_path, Path) or (
+            isinstance(source_or_path, str)
+            and os.path.exists(source_or_path)
+            and "\n" not in source_or_path
+            and len(source_or_path) < 256
+        ):
+            file_path = str(source_or_path)
+        else:
+            with tempfile.NamedTemporaryFile("w", suffix=".mal", delete=False) as f:
+                f.write(str(source_or_path))
+                tmp_path = f.name
+            file_path = tmp_path
+
+        cmd = [str(backend["exe"]), file_path]
+        if backend.get("supports_max_steps", True):
+            cmd.append(str(max_steps))
+
+        stdin_bytes = stdin_data.encode("latin-1") if isinstance(stdin_data, str) else stdin_data
+
+        t0 = time.perf_counter()
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=stdin_bytes,
+                capture_output=True,
+                timeout=60,
+            )
+            elapsed = (time.perf_counter() - t0) * 1000
+            stdout = proc.stdout.decode("latin-1", errors="replace")
+            stderr = proc.stderr.decode("latin-1", errors="replace")
+            halted = (proc.returncode == 0)
+            return EvalResult(
+                success=halted,
+                stdout=stdout,
+                stderr=stderr,
+                returncode=proc.returncode,
+                steps=0,
+                halted=halted,
+                halt_reason="halt_opcode" if halted else f"exit_code_{proc.returncode}",
+                elapsed_ms=elapsed,
+                backend="mb_ref",
+                raw_output=stdout,
+            )
+        except Exception as e:
+            elapsed = (time.perf_counter() - t0) * 1000
+            return EvalResult(
+                success=False,
+                stdout="",
+                stderr=str(e),
+                returncode=-1,
+                steps=0,
+                halted=False,
+                halt_reason=str(e),
+                elapsed_ms=elapsed,
+                backend="mb_ref",
+            )
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
     def evaluate_autobolge(
         self, program_path: Path, input_data: bytes = b"", max_steps: int = 5_000_000
     ) -> EvalResult:
@@ -553,6 +654,10 @@ class UnifiedEvaluator:
         # 2. Oracle backend
         if prog_str:
             results["oracle"] = self.evaluate_oracle(prog_str)
+
+        # 2b. Strict Canonical C Oracle (mb_ref)
+        if prog_str and "mb_ref" in self.registry.backends:
+            results["mb_ref"] = self.evaluate_mb_ref(prog_str)
 
         # 3. bolge19 (if 19-trit compatible native binary exists)
         if Path(program_path).exists() and "bolge19" in self.registry.backends:
